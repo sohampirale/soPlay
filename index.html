@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sync Audio with YouTube</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Sync Audio with YouTube</h1>
+
+    <form id="addForm" class="input-group">
+      <input type="text" id="lectureName" placeholder="Lecture Name (e.g. Backend Learning)" required />
+      <input type="text" id="youtubeUrl" placeholder="YouTube URL" required />
+      <button type="submit">Add Video</button>
+    </form>
+
+    <ul id="videoList" class="video-list">
+      <!-- Dynamically populated -->
+    </ul>
+
+    <div id="player" class="player"></div>
+
+    <audio id="audioPlayer" controls>
+      <source src="your-audio-file.mp3" type="audio/mp3" />
+      Your browser does not support the audio element.
+    </audio>
+
+    <button id="manualToggle" class="wide-btn">Play/Pause Audio</button>
+
+    <p id="statusText" class="status">Waiting for action...</p>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="script.js"></script>
+</body>
+</html>
