@@ -1,4 +1,9 @@
-let player;
+const BIN_ID = '6815be958a456b7966969edb';
+const API_KEY = '$2a$10$R3.wwOYbenUEFkJ1MIlP0u4KMas5pWfF0kcIbbbIav63MMftYkqBK'; // Or leave empty if bin is public
+const READ_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}/latest`;
+const WRITE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+let player, currentIndex = null;
 const form = document.getElementById('addForm');
 const nameInput = document.getElementById('lectureName');
 const urlInput = document.getElementById('youtubeUrl');
@@ -6,63 +11,60 @@ const listEl = document.getElementById('videoList');
 const statusEl = document.getElementById('statusText');
 const audioPlayer = document.getElementById('audioPlayer');
 const manualBtn = document.getElementById('manualToggle');
-let currentIndex = null;
 
-// Initialize YouTube Player API
-function onYouTubeIframeAPIReady() {
-  player = new YT.Player('player', {
-    height: '360', width: '640', videoId: '',
-    events: {
-      'onReady': onPlayerReady,
-      'onStateChange': onStateChange
+// ========== JSONBin Load & Save ==========
+
+async function loadAll() {
+  const res = await fetch(READ_URL, {
+    headers: {
+      'X-Master-Key': API_KEY
     }
+  });
+  const { record } = await res.json();
+  return record.videos || [];
+}
+
+async function saveAll(videos) {
+  await fetch(WRITE_URL, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': API_KEY
+    },
+    body: JSON.stringify({ videos })
   });
 }
 
-// When player is ready, restore last state
-function onPlayerReady() {
-  renderList();
-  const videos = loadAll();
-  if (videos.length) loadVideo(videos[0], 0);
-}
+// ========== DOM & UI Logic ==========
 
-// Extract video ID
 function extractID(url) {
-  const re = /(?:youtu\.be\/|[?&]v=)([\w-]{11})/;
-  const m = url.match(re);
-  return m ? m[1] : null;
+  const match = url.match(/(?:v=|youtu\.be\/)([^&\n?#]+)/);
+  return match ? match[1] : null;
 }
 
-// Handle player state changes
-function onStateChange(e) {
-  if (e.data === YT.PlayerState.PLAYING) controlAudio(false);
-  if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) controlAudio(true);
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// Play or pause audio
-function controlAudio(shouldPlay) {
-  if (shouldPlay) {
-    audioPlayer.play();
-    statusEl.textContent = 'Audio playing';
-  } else {
+function controlAudio(pause) {
+  if (pause) {
     audioPlayer.pause();
-    statusEl.textContent = 'Audio paused';
+  } else {
+    audioPlayer.play().catch(() => {});
   }
 }
-// Manual toggle
+
 manualBtn.addEventListener('click', () => {
-  if (audioPlayer.paused) controlAudio(true);
-  else controlAudio(false);
+  if (audioPlayer.paused) audioPlayer.play();
+  else audioPlayer.pause();
 });
 
-// LocalStorage helpers
-function saveAll(videos) { localStorage.setItem('videos', JSON.stringify(videos)); }
-function loadAll() { return JSON.parse(localStorage.getItem('videos')||'[]'); }
-
-// Render video list
-function renderList() {
+async function renderList() {
+  const videos = await loadAll();
   listEl.innerHTML = '';
-  loadAll().forEach((v, i) => {
+  videos.forEach((v, i) => {
     const li = document.createElement('li');
     const span = document.createElement('span');
     span.textContent = `${v.name} (${formatTime(v.time)})`;
@@ -74,38 +76,58 @@ function renderList() {
   });
 }
 
-// Format seconds to h m s
-function formatTime(s) {
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
-  return `${h?h+'h ':''}${m}m ${sec}s`;
+async function loadVideo(video, index) {
+  currentIndex = index;
+  if (player) player.loadVideoById({ videoId: video.id, startSeconds: video.time });
+  else initPlayer(video.id, video.time);
+  controlAudio(true);
 }
 
-// Add video
-form.addEventListener('submit', e => {
+// ========== YouTube Player API ==========
+
+function initPlayer(videoId, start = 0) {
+  if (player) return;
+  player = new YT.Player('player', {
+    height: '390',
+    width: '640',
+    videoId: videoId,
+    playerVars: { start },
+    events: {
+      'onStateChange': onPlayerStateChange
+    }
+  });
+}
+
+function onPlayerStateChange(event) {
+  if (event.data === YT.PlayerState.PLAYING) controlAudio(true);
+  if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) controlAudio(false);
+}
+
+// ========== Add Video ==========
+
+form.addEventListener('submit', async e => {
   e.preventDefault();
   const id = extractID(urlInput.value.trim());
-  if (!id) return statusEl.textContent = 'Invalid URL';
-  const videos = loadAll();
+  if (!id) return statusEl.textContent = 'Invalid YouTube URL';
+  const videos = await loadAll();
   videos.unshift({ name: nameInput.value.trim(), id, time: 0 });
-  saveAll(videos); renderList();
+  await saveAll(videos);
   nameInput.value = urlInput.value = '';
-  statusEl.textContent = 'Video added';
+  statusEl.textContent = 'Video added!';
+  renderList();
 });
 
-// Load a video and set current index
-function loadVideo(v, i) {
-  currentIndex = i;
-  player.loadVideoById(v.id, v.time);
-  statusEl.textContent = `Loaded: ${v.name}`;
-}
+// ========== Save Timestamp ==========
 
-// Auto-save playback time
-setInterval(() => {
+setInterval(async () => {
   if (player && player.getCurrentTime && currentIndex !== null) {
-    const videos = loadAll();
+    const videos = await loadAll();
     videos[currentIndex].time = player.getCurrentTime();
-    saveAll(videos);
-    renderList();
+    await saveAll(videos);
   }
 }, 5000);
 
+// ========== On Load ==========
+window.onload = () => {
+  renderList();
+};
